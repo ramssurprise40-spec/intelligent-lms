@@ -64,14 +64,4 @@ services:
       uvicorn main:app --host 0.0.0.0 --port $PORT
     plan: starter
 
-  # React Frontend
-  - type: staticSite
-    name: intelligent-lms-frontend
-    repo: https://github.com/ramssurprise40-spec/intelligent-lms.git
-    region: oregon
-    branch: main
-    rootDir: ./frontend
-    buildCommand: |
-      npm ci
-      npm run build
-    staticPublishPath: ./dist
+  # Note: Frontend will be added manually after backend deployment
