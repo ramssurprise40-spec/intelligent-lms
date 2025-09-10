@@ -65,7 +65,7 @@ services:
     plan: starter
 
   # React Frontend
-  - type: static
+  - type: staticSite
     name: intelligent-lms-frontend
     repo: https://github.com/ramssurprise40-spec/intelligent-lms.git
     region: oregon
