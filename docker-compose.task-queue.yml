@@ -1,0 +1,225 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: intelligent_lms_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - intelligent_lms_network
+
+  # Celery Workers for Django Backend
+  celery_worker_default:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: celery_worker_default
+    command: celery -A intelligent_lms worker -Q default,user_tasks,course_tasks -l info --concurrency=2
+    volumes:
+      - ./backend:/app
+      - ./backend/media:/app/media
+      - ./backend/logs:/app/logs
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - DJANGO_SETTINGS_MODULE=intelligent_lms.settings
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - intelligent_lms_network
+    restart: unless-stopped
+
+  celery_worker_ai:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: celery_worker_ai
+    command: celery -A intelligent_lms worker -Q ai_content,ai_assessment,ai_communication -l info --concurrency=1
+    volumes:
+      - ./backend:/app
+      - ./backend/media:/app/media
+      - ./backend/logs:/app/logs
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - DJANGO_SETTINGS_MODULE=intelligent_lms.settings
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - intelligent_lms_network
+    restart: unless-stopped
+
+  celery_worker_communications:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: celery_worker_communications
+    command: celery -A intelligent_lms worker -Q communication_tasks,high_priority -l info --concurrency=3
+    volumes:
+      - ./backend:/app
+      - ./backend/media:/app/media
+      - ./backend/logs:/app/logs
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - DJANGO_SETTINGS_MODULE=intelligent_lms.settings
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - intelligent_lms_network
+    restart: unless-stopped
+
+  celery_worker_analytics:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: celery_worker_analytics
+    command: celery -A intelligent_lms worker -Q analytics_tasks,low_priority -l info --concurrency=1
+    volumes:
+      - ./backend:/app
+      - ./backend/media:/app/media
+      - ./backend/logs:/app/logs
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - DJANGO_SETTINGS_MODULE=intelligent_lms.settings
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - intelligent_lms_network
+    restart: unless-stopped
+
+  # Celery Beat Scheduler
+  celery_beat:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: celery_beat
+    command: celery -A intelligent_lms beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    volumes:
+      - ./backend:/app
+      - ./backend/logs:/app/logs
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - DJANGO_SETTINGS_MODULE=intelligent_lms.settings
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - intelligent_lms_network
+    restart: unless-stopped
+
+  # Dramatiq Workers for FastAPI Microservices
+  dramatiq_ai_content:
+    build:
+      context: ./microservices/ai_content
+      dockerfile: Dockerfile
+    container_name: dramatiq_ai_content
+    command: dramatiq tasks --processes 2 --threads 4
+    volumes:
+      - ./microservices:/app/microservices
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - REDIS_DB=0
+      - REDIS_RESULTS_DB=5
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - intelligent_lms_network
+    restart: unless-stopped
+
+  dramatiq_ai_assessment:
+    build:
+      context: ./microservices/ai_assessment
+      dockerfile: Dockerfile
+    container_name: dramatiq_ai_assessment
+    command: dramatiq tasks --processes 1 --threads 2
+    volumes:
+      - ./microservices:/app/microservices
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - REDIS_DB=0
+      - REDIS_RESULTS_DB=5
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - intelligent_lms_network
+    restart: unless-stopped
+
+  dramatiq_search:
+    build:
+      context: ./microservices/search
+      dockerfile: Dockerfile
+    container_name: dramatiq_search
+    command: dramatiq tasks --processes 1 --threads 3
+    volumes:
+      - ./microservices:/app/microservices
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - REDIS_DB=0
+      - REDIS_RESULTS_DB=5
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - intelligent_lms_network
+    restart: unless-stopped
+
+  # Task Monitoring with Flower
+  flower:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: flower_monitor
+    command: celery -A intelligent_lms flower --port=5555 --broker=redis://redis:6379/0
+    ports:
+      - "5555:5555"
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - FLOWER_BASIC_AUTH=admin:intelligent_lms_2024
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - intelligent_lms_network
+    restart: unless-stopped
+
+  # Redis Insight for Redis Management
+  redis_insight:
+    image: redislabs/redisinsight:latest
+    container_name: redis_insight
+    ports:
+      - "8001:8001"
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    depends_on:
+      - redis
+    networks:
+      - intelligent_lms_network
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  intelligent_lms_network:
+    driver: bridge
+    external: true
