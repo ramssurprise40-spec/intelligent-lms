@@ -14,11 +14,12 @@ services:
     region: oregon
     plan: starter
     maxmemoryPolicy: allkeys-lru
+    ipAllowList: []
 
   # Django Backend
   - type: web
     name: intelligent-lms-backend
-    runtime: python3
+    runtime: python
     repo: https://github.com/ramssurprise40-spec/intelligent-lms.git
     region: oregon
     branch: main
@@ -52,7 +53,7 @@ services:
   # AI Search Microservice
   - type: web
     name: intelligent-lms-ai-search
-    runtime: python3
+    runtime: python
     repo: https://github.com/ramssurprise40-spec/intelligent-lms.git
     region: oregon
     branch: main
