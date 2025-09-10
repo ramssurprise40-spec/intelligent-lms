@@ -379,7 +379,8 @@ class PeerReview(models.Model):
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     assessment = models.ForeignKey(Assessment, on_delete=models.CASCADE, related_name='peer_reviews')
-    reviewer = models.ForeignKey(User, on_delete=models.CASCADE, related_name='peer_reviews_given')
+    reviewer = models.ForeignKey(User, on_delete=models.CASCADE, related_name='assessment_peer_reviews_given')
+    reviewee = models.ForeignKey(User, on_delete=models.CASCADE, related_name='assessment_peer_reviews_received')
     reviewed_submission = models.ForeignKey(AssessmentSubmission, on_delete=models.CASCADE, related_name='peer_reviews')
     
     # Review details

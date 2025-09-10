@@ -11,8 +11,12 @@ import {
   Bars3Icon,
   XMarkIcon,
   BellIcon,
+  ArrowRightOnRectangleIcon,
+  ChevronDownIcon,
 } from '@heroicons/react/24/outline';
 import { cn } from '../../utils/cn';
+import { useAuth } from '../../contexts/AuthContext';
+import Dropdown from '../ui/Dropdown';
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
@@ -31,6 +35,33 @@ export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+
+  const userMenuItems = [
+    {
+      label: 'Profile',
+      onClick: () => navigate('/profile'),
+      icon: UserIcon,
+    },
+    {
+      label: 'Settings',
+      onClick: () => navigate('/settings'),
+      icon: CogIcon,
+    },
+    {
+      divider: true,
+    },
+    {
+      label: 'Sign out',
+      onClick: handleLogout,
+      icon: ArrowRightOnRectangleIcon,
+    },
+  ];
 
   return (
     <div className="h-screen flex overflow-hidden bg-gray-100">
@@ -108,13 +139,20 @@ export default function Layout() {
 
               {/* Profile dropdown */}
               <div className="ml-3 relative">
-                <div className="flex text-sm rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                  <img
-                    className="h-8 w-8 rounded-full"
-                    src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80"
-                    alt="Profile"
-                  />
-                </div>
+                <Dropdown
+                  align="right"
+                  items={userMenuItems}
+                  trigger={
+                    <div className="flex items-center text-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 rounded-full p-1">
+                      <img
+                        className="h-8 w-8 rounded-full"
+                        src={user?.profile_picture || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80"}
+                        alt="Profile"
+                      />
+                      <ChevronDownIcon className="ml-1 h-4 w-4 text-gray-400" />
+                    </div>
+                  }
+                />
               </div>
             </div>
           </div>
@@ -135,6 +173,7 @@ export default function Layout() {
 
 function SidebarContent() {
   const location = useLocation();
+  const { user } = useAuth();
 
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-white border-r border-gray-200">
@@ -188,16 +227,16 @@ function SidebarContent() {
             <div>
               <img
                 className="inline-block h-9 w-9 rounded-full"
-                src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80"
+                src={user?.profile_picture || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80"}
                 alt="User"
               />
             </div>
             <div className="ml-3">
               <p className="text-sm font-medium text-gray-700 group-hover:text-gray-900">
-                John Doe
+                {user?.first_name} {user?.last_name}
               </p>
               <p className="text-xs font-medium text-gray-500 group-hover:text-gray-700">
-                Student
+                {user?.role?.charAt(0).toUpperCase() + user?.role?.slice(1)}
               </p>
             </div>
           </div>

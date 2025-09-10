@@ -27,11 +27,11 @@ services:
     buildCommand: |
       pip install --upgrade pip
       pip install -r requirements.txt
-      python manage.py collectstatic --noinput
-      python manage.py migrate
     startCommand: |
-      gunicorn intelligent_lms.wsgi:application --bind 0.0.0.0:$PORT --workers 3
-    healthCheckPath: /health/
+      python manage.py migrate
+      python manage.py collectstatic --noinput
+      gunicorn intelligent_lms.wsgi:application --bind 0.0.0.0:$PORT --workers 2
+    healthCheckPath: /api/docs/
     plan: free
     envVars:
       - key: DATABASE_URL
@@ -43,12 +43,73 @@ services:
           type: redis
           name: intelligent-lms-redis
           property: connectionString
+      - key: USE_REDIS
+        value: "true"
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: redis
+          name: intelligent-lms-redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          type: redis
+          name: intelligent-lms-redis
+          property: connectionString
       - key: DJANGO_SECRET_KEY
         generateValue: true
       - key: DJANGO_DEBUG
         value: "False"
       - key: DJANGO_ALLOWED_HOSTS
-        value: "*"
+        value: "*.onrender.com"
+      - key: CORS_ALLOWED_ORIGINS
+        value: "https://intelligent-lms-frontend.onrender.com"
+      # Add these manually in Render dashboard:
+      # - key: OPENAI_API_KEY
+      #   value: "your-openai-api-key"
+
+  # Celery Worker for Background Tasks
+  - type: worker
+    name: intelligent-lms-worker
+    runtime: python
+    repo: https://github.com/ramssurprise40-spec/intelligent-lms.git
+    region: oregon
+    branch: main
+    rootDir: ./backend
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r requirements.txt
+    startCommand: |
+      celery -A intelligent_lms worker --loglevel=info --concurrency=2
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: intelligent-lms-postgres
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: intelligent-lms-redis
+          property: connectionString
+      - key: USE_REDIS
+        value: "true"
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: redis
+          name: intelligent-lms-redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          type: redis
+          name: intelligent-lms-redis
+          property: connectionString
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DJANGO_DEBUG
+        value: "False"
+      # Add these manually in Render dashboard:
+      # - key: OPENAI_API_KEY
+      #   value: "your-openai-api-key"
 
   # AI Search Microservice
   - type: web
@@ -62,7 +123,54 @@ services:
       pip install --upgrade pip
       pip install -r requirements.txt
     startCommand: |
-      uvicorn main:app --host 0.0.0.0 --port $PORT
+      uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1
     plan: free
+    envVars:
+      # Add these manually in Render dashboard:
+      # - key: OPENAI_API_KEY
+      #   value: "your-openai-api-key"
+      # - key: DATABASE_URL (if needed)
+      #   fromDatabase:
+      #     name: intelligent-lms-postgres
+      #     property: connectionString
 
-  # Note: Frontend will be added manually after backend deployment
+  # AI Content Microservice
+  - type: web
+    name: intelligent-lms-ai-content
+    runtime: python
+    repo: https://github.com/ramssurprise40-spec/intelligent-lms.git
+    region: oregon
+    branch: main
+    rootDir: ./microservices/ai_content
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r requirements.txt
+    startCommand: |
+      uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1
+    plan: free
+    envVars:
+      # Add these manually in Render dashboard:
+      # - key: OPENAI_API_KEY
+      #   value: "your-openai-api-key"
+
+  # AI Assessment Microservice
+  - type: web
+    name: intelligent-lms-ai-assessment
+    runtime: python
+    repo: https://github.com/ramssurprise40-spec/intelligent-lms.git
+    region: oregon
+    branch: main
+    rootDir: ./microservices/ai_assessment
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r requirements.txt
+    startCommand: |
+      uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1
+    plan: free
+    envVars:
+      # Add these manually in Render dashboard:
+      # - key: OPENAI_API_KEY
+      #   value: "your-openai-api-key"
+
+  # Note: Frontend static site will be added manually after backend deployment
+  # Frontend should be deployed as a separate static site service

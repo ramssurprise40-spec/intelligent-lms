@@ -54,6 +54,12 @@ export default function HomePage() {
               >
                 Sign In
               </Link>
+              <Link
+                to="/register"
+                className="btn-primary"
+              >
+                Get Started
+              </Link>
             </div>
           </div>
         </div>

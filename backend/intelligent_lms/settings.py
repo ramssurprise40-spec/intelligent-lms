@@ -209,6 +209,8 @@ REST_FRAMEWORK = {
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
     "http://localhost:8080",
     "http://127.0.0.1:8080",
 ]
@@ -266,9 +268,19 @@ LOGGING = {
 # Celery Configuration
 # https://docs.celeryproject.org/en/stable/userguide/configuration.html
 
+# Redis Usage Flag
+USE_REDIS = os.getenv('USE_REDIS', 'false').lower() == 'true'
+
 # Celery Broker Configuration
-CELERY_BROKER_URL = 'redis://localhost:6379/0'
-CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+if USE_REDIS:
+    CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
+    CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
+else:
+    # Use in-memory broker for local development when Redis is not available
+    CELERY_TASK_ALWAYS_EAGER = True
+    CELERY_TASK_EAGER_PROPAGATES = True
+    CELERY_BROKER_URL = 'memory://'
+    CELERY_RESULT_BACKEND = 'cache+memory://'
 
 # Celery Task Configuration
 CELERY_ACCEPT_CONTENT = ['json']
@@ -280,9 +292,10 @@ CELERY_ENABLE_UTC = True
 # Celery Beat Configuration
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 
-# Celery Results Configuration
-CELERY_RESULT_BACKEND = 'django-cache'
-CELERY_CACHE_BACKEND = 'django-cache'
+# Celery Results Configuration - conditionally set based on Redis availability
+if not USE_REDIS:
+    CELERY_RESULT_BACKEND = 'cache+memory://'
+    CELERY_CACHE_BACKEND = 'memory'
 
 # Task Routes Configuration
 CELERY_TASK_ROUTES = {
@@ -295,10 +308,11 @@ CELERY_TASK_ROUTES = {
 }
 
 # Task Execution Configuration
-CELERY_TASK_ALWAYS_EAGER = False  # Set to True for synchronous testing
+if USE_REDIS:
+    CELERY_TASK_ALWAYS_EAGER = False  # Set to True for synchronous testing
+    CELERY_TASK_IGNORE_RESULT = False
+    CELERY_TASK_STORE_EAGER_RESULT = True
 CELERY_TASK_EAGER_PROPAGATES = True
-CELERY_TASK_IGNORE_RESULT = False
-CELERY_TASK_STORE_EAGER_RESULT = True
 
 # Worker Configuration
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
@@ -309,27 +323,44 @@ CELERY_WORKER_DISABLE_RATE_LIMITS = False
 CELERY_TASK_SOFT_TIME_LIMIT = 300  # 5 minutes
 CELERY_TASK_TIME_LIMIT = 600       # 10 minutes
 
-# Redis Configuration for Django Cache
-CACHES = {
-    'default': {
-        'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': 'redis://localhost:6379/1',
-        'OPTIONS': {
-            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-        }
-    },
-    'sessions': {
-        'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': 'redis://localhost:6379/2',
-        'OPTIONS': {
-            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+# Django Cache Configuration - conditional based on Redis availability
+if USE_REDIS:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django_redis.cache.RedisCache',
+            'LOCATION': 'redis://localhost:6379/1',
+            'OPTIONS': {
+                'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            }
+        },
+        'sessions': {
+            'BACKEND': 'django_redis.cache.RedisCache',
+            'LOCATION': 'redis://localhost:6379/2',
+            'OPTIONS': {
+                'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            }
         }
     }
-}
+else:
+    # Use local memory cache when Redis is not available
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'default-cache',
+        },
+        'sessions': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'sessions-cache',
+        }
+    }
 
-# Use Redis for session storage
-SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
-SESSION_CACHE_ALIAS = 'sessions'
+# Session storage configuration - conditional based on Redis availability
+if USE_REDIS:
+    SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
+    SESSION_CACHE_ALIAS = 'sessions'
+else:
+    # Use database sessions when Redis is not available
+    SESSION_ENGINE = 'django.contrib.sessions.backends.db'
 
 # JWT Configuration
 from datetime import timedelta
