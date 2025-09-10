@@ -1,32 +1,37 @@
-# Render.com deployment configuration for Intelligent LMS Task Queue
-# This file configures all services for the message bus and task workers
+# Render.com Blueprint for Intelligent LMS
+
+databases:
+  - name: intelligent-lms-postgres
+    databaseName: intelligent_lms
+    user: lms_user
+    region: oregon
+    plan: starter
 
 services:
-  # Redis - Use Render's managed Redis instead of self-hosted
+  # Redis Cache
   - type: redis
     name: intelligent-lms-redis
     region: oregon
     plan: starter
     maxmemoryPolicy: allkeys-lru
-    ipAllowList: []
 
-  # Django Backend with Celery Workers
+  # Django Backend
   - type: web
     name: intelligent-lms-backend
-    runtime: docker
+    runtime: python3
     repo: https://github.com/ramssurprise40-spec/intelligent-lms.git
     region: oregon
     branch: main
     rootDir: ./backend
-    dockerfilePath: ./Dockerfile
-    plan: standard
     buildCommand: |
+      pip install --upgrade pip
       pip install -r requirements.txt
       python manage.py collectstatic --noinput
       python manage.py migrate
     startCommand: |
       gunicorn intelligent_lms.wsgi:application --bind 0.0.0.0:$PORT --workers 3
     healthCheckPath: /health/
+    plan: starter
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -37,474 +42,36 @@ services:
           type: redis
           name: intelligent-lms-redis
           property: connectionString
-      - key: CELERY_BROKER_URL
-        fromService:
-          type: redis
-          name: intelligent-lms-redis
-          property: connectionString
-      - key: CELERY_RESULT_BACKEND
-        fromService:
-          type: redis
-          name: intelligent-lms-redis
-          property: connectionString
-      - key: SECRET_KEY
+      - key: DJANGO_SECRET_KEY
         generateValue: true
-      - key: DEBUG
+      - key: DJANGO_DEBUG
         value: "False"
-      - key: ALLOWED_HOSTS
+      - key: DJANGO_ALLOWED_HOSTS
         value: "*"
-      - key: DJANGO_SETTINGS_MODULE
-        value: intelligent_lms.settings
 
-  # Celery Worker - Default Queue
-  - type: worker
-    name: celery-worker-default
-    runtime: docker
-    repo: https://github.com/ramssurprise40-spec/intelligent-lms.git
-    region: oregon
-    branch: main
-    rootDir: ./backend
-    dockerfilePath: ./Dockerfile
-    plan: starter
-    buildCommand: pip install -r requirements.txt
-    startCommand: |
-      celery -A intelligent_lms worker -Q default,user_tasks,course_tasks -l info --concurrency=2
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: intelligent-lms-postgres
-          property: connectionString
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: intelligent-lms-redis
-          property: connectionString
-      - key: CELERY_BROKER_URL
-        fromService:
-          type: redis
-          name: intelligent-lms-redis
-          property: connectionString
-      - key: CELERY_RESULT_BACKEND
-        fromService:
-          type: redis
-          name: intelligent-lms-redis
-          property: connectionString
-      - key: SECRET_KEY
-        sync: false
-      - key: DJANGO_SETTINGS_MODULE
-        value: intelligent_lms.settings
-
-  # Celery Worker - AI Tasks
-  - type: worker
-    name: celery-worker-ai
-    runtime: docker
-    repo: https://github.com/ramssurprise40-spec/intelligent-lms.git
-    region: oregon
-    branch: main
-    rootDir: ./backend
-    dockerfilePath: ./Dockerfile
-    plan: standard
-    buildCommand: pip install -r requirements.txt
-    startCommand: |
-      celery -A intelligent_lms worker -Q ai_content,ai_assessment,ai_communication -l info --concurrency=1
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: intelligent-lms-postgres
-          property: connectionString
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: intelligent-lms-redis
-          property: connectionString
-      - key: CELERY_BROKER_URL
-        fromService:
-          type: redis
-          name: intelligent-lms-redis
-          property: connectionString
-      - key: CELERY_RESULT_BACKEND
-        fromService:
-          type: redis
-          name: intelligent-lms-redis
-          property: connectionString
-      - key: SECRET_KEY
-        sync: false
-      - key: DJANGO_SETTINGS_MODULE
-        value: intelligent_lms.settings
-      - key: OPENAI_API_KEY
-        sync: false
-      - key: ANTHROPIC_API_KEY
-        sync: false
-
-  # Celery Worker - Communications
-  - type: worker
-    name: celery-worker-communications
-    runtime: docker
-    repo: https://github.com/ramssurprise40-spec/intelligent-lms.git
-    region: oregon
-    branch: main
-    rootDir: ./backend
-    dockerfilePath: ./Dockerfile
-    plan: starter
-    buildCommand: pip install -r requirements.txt
-    startCommand: |
-      celery -A intelligent_lms worker -Q communication_tasks,high_priority -l info --concurrency=3
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: intelligent-lms-postgres
-          property: connectionString
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: intelligent-lms-redis
-          property: connectionString
-      - key: CELERY_BROKER_URL
-        fromService:
-          type: redis
-          name: intelligent-lms-redis
-          property: connectionString
-      - key: CELERY_RESULT_BACKEND
-        fromService:
-          type: redis
-          name: intelligent-lms-redis
-          property: connectionString
-      - key: SECRET_KEY
-        sync: false
-      - key: DJANGO_SETTINGS_MODULE
-        value: intelligent_lms.settings
-      - key: EMAIL_HOST
-        sync: false
-      - key: EMAIL_HOST_USER
-        sync: false
-      - key: EMAIL_HOST_PASSWORD
-        sync: false
-      - key: EMAIL_PORT
-        value: "587"
-      - key: EMAIL_USE_TLS
-        value: "True"
-
-  # Celery Worker - Analytics
-  - type: worker
-    name: celery-worker-analytics
-    runtime: docker
-    repo: https://github.com/ramssurprise40-spec/intelligent-lms.git
-    region: oregon
-    branch: main
-    rootDir: ./backend
-    dockerfilePath: ./Dockerfile
-    plan: starter
-    buildCommand: pip install -r requirements.txt
-    startCommand: |
-      celery -A intelligent_lms worker -Q analytics_tasks,low_priority -l info --concurrency=1
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: intelligent-lms-postgres
-          property: connectionString
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: intelligent-lms-redis
-          property: connectionString
-      - key: CELERY_BROKER_URL
-        fromService:
-          type: redis
-          name: intelligent-lms-redis
-          property: connectionString
-      - key: CELERY_RESULT_BACKEND
-        fromService:
-          type: redis
-          name: intelligent-lms-redis
-          property: connectionString
-      - key: SECRET_KEY
-        sync: false
-      - key: DJANGO_SETTINGS_MODULE
-        value: intelligent_lms.settings
-
-  # Celery Beat Scheduler
-  - type: worker
-    name: celery-beat
-    runtime: docker
-    repo: https://github.com/ramssurprise40-spec/intelligent-lms.git
-    region: oregon
-    branch: main
-    rootDir: ./backend
-    dockerfilePath: ./Dockerfile
-    plan: starter
-    buildCommand: pip install -r requirements.txt
-    startCommand: |
-      celery -A intelligent_lms beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: intelligent-lms-postgres
-          property: connectionString
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: intelligent-lms-redis
-          property: connectionString
-      - key: CELERY_BROKER_URL
-        fromService:
-          type: redis
-          name: intelligent-lms-redis
-          property: connectionString
-      - key: CELERY_RESULT_BACKEND
-        fromService:
-          type: redis
-          name: intelligent-lms-redis
-          property: connectionString
-      - key: SECRET_KEY
-        sync: false
-      - key: DJANGO_SETTINGS_MODULE
-        value: intelligent_lms.settings
-
-  # FastAPI AI Content Microservice with Dramatiq
+  # AI Search Microservice
   - type: web
-    name: ai-content-service
-    runtime: docker
-    repo: https://github.com/ramssurprise40-spec/intelligent-lms.git
-    region: oregon
-    branch: main
-    rootDir: ./microservices/ai_content
-    dockerfilePath: ./Dockerfile
-    plan: standard
-    buildCommand: pip install -r requirements.txt
-    startCommand: |
-      uvicorn main:app --host 0.0.0.0 --port $PORT --workers 2
-    healthCheckPath: /health
-    envVars:
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: intelligent-lms-redis
-          property: connectionString
-      - key: REDIS_DB
-        value: "0"
-      - key: REDIS_RESULTS_DB
-        value: "5"
-      - key: OPENAI_API_KEY
-        sync: false
-      - key: ANTHROPIC_API_KEY
-        sync: false
-
-  # Dramatiq Worker for AI Content
-  - type: worker
-    name: dramatiq-ai-content
-    runtime: docker
-    repo: https://github.com/ramssurprise40-spec/intelligent-lms.git
-    region: oregon
-    branch: main
-    rootDir: ./microservices/ai_content
-    dockerfilePath: ./Dockerfile
-    plan: standard
-    buildCommand: pip install -r requirements.txt
-    startCommand: |
-      dramatiq tasks --processes 2 --threads 4
-    envVars:
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: intelligent-lms-redis
-          property: connectionString
-      - key: REDIS_DB
-        value: "0"
-      - key: REDIS_RESULTS_DB
-        value: "5"
-      - key: OPENAI_API_KEY
-        sync: false
-      - key: ANTHROPIC_API_KEY
-        sync: false
-
-  # FastAPI AI Assessment Microservice
-  - type: web
-    name: ai-assessment-service
-    runtime: docker
-    repo: https://github.com/ramssurprise40-spec/intelligent-lms.git
-    region: oregon
-    branch: main
-    rootDir: ./microservices/ai_assessment
-    dockerfilePath: ./Dockerfile
-    plan: standard
-    buildCommand: pip install -r requirements.txt
-    startCommand: |
-      uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1
-    healthCheckPath: /health
-    envVars:
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: intelligent-lms-redis
-          property: connectionString
-      - key: REDIS_DB
-        value: "0"
-      - key: REDIS_RESULTS_DB
-        value: "5"
-      - key: OPENAI_API_KEY
-        sync: false
-
-  # Dramatiq Worker for AI Assessment
-  - type: worker
-    name: dramatiq-ai-assessment
-    runtime: docker
-    repo: https://github.com/ramssurprise40-spec/intelligent-lms.git
-    region: oregon
-    branch: main
-    rootDir: ./microservices/ai_assessment
-    dockerfilePath: ./Dockerfile
-    plan: standard
-    buildCommand: pip install -r requirements.txt
-    startCommand: |
-      dramatiq tasks --processes 1 --threads 2
-    envVars:
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: intelligent-lms-redis
-          property: connectionString
-      - key: REDIS_DB
-        value: "0"
-      - key: REDIS_RESULTS_DB
-        value: "5"
-      - key: OPENAI_API_KEY
-        sync: false
-
-  # FastAPI AI Search Microservice with RAG
-  - type: web
-    name: ai-search-service
-    runtime: docker
+    name: intelligent-lms-ai-search
+    runtime: python3
     repo: https://github.com/ramssurprise40-spec/intelligent-lms.git
     region: oregon
     branch: main
     rootDir: ./microservices/ai_search
-    dockerfilePath: ./Dockerfile
-    plan: standard
-    buildCommand: pip install -r requirements.txt
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r requirements.txt
     startCommand: |
-      uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1
-    healthCheckPath: /health
-    envVars:
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: intelligent-lms-redis
-          property: connectionString
-      - key: OPENAI_API_KEY
-        sync: false
-      - key: CHROMA_PERSIST_DIRECTORY
-        value: "/opt/render/project/src/chroma_db"
-      - key: CHROMA_COLLECTION_NAME
-        value: "lms_content"
-    disk:
-      name: chroma-vector-db
-      mountPath: /opt/render/project/src/chroma_db
-      sizeGB: 10
-
-  # AI Communication Microservice
-  - type: web
-    name: ai-communication-service
-    runtime: docker
-    repo: https://github.com/ramssurprise40-spec/intelligent-lms.git
-    region: oregon
-    branch: main
-    rootDir: ./microservices/ai_communication
-    dockerfilePath: ./Dockerfile
+      uvicorn main:app --host 0.0.0.0 --port $PORT
     plan: starter
-    buildCommand: pip install -r requirements.txt
-    startCommand: |
-      uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1
-    healthCheckPath: /health
-    envVars:
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: intelligent-lms-redis
-          property: connectionString
-      - key: OPENAI_API_KEY
-        sync: false
-
-  # Flower Monitoring Dashboard
-  - type: web
-    name: flower-monitor
-    runtime: docker
-    repo: https://github.com/ramssurprise40-spec/intelligent-lms.git
-    region: oregon
-    branch: main
-    rootDir: ./backend
-    dockerfilePath: ./Dockerfile
-    plan: starter
-    buildCommand: pip install -r requirements.txt
-    startCommand: |
-      celery -A intelligent_lms flower --port=$PORT --broker=$REDIS_URL --url_prefix=flower
-    healthCheckPath: /flower/
-    envVars:
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: intelligent-lms-redis
-          property: connectionString
-      - key: CELERY_BROKER_URL
-        fromService:
-          type: redis
-          name: intelligent-lms-redis
-          property: connectionString
-      - key: CELERY_RESULT_BACKEND
-        fromService:
-          type: redis
-          name: intelligent-lms-redis
-          property: connectionString
-      - key: FLOWER_BASIC_AUTH
-        value: admin:secure_password_2024
-      - key: FLOWER_URL_PREFIX
-        value: flower
 
   # React Frontend
-  - type: web
+  - type: static
     name: intelligent-lms-frontend
-    runtime: node
     repo: https://github.com/ramssurprise40-spec/intelligent-lms.git
     region: oregon
     branch: main
     rootDir: ./frontend
-    plan: starter
     buildCommand: |
       npm ci
       npm run build
-    startCommand: npm start
-    healthCheckPath: /
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: REACT_APP_API_URL
-        fromService:
-          type: web
-          name: intelligent-lms-backend
-          property: host
-      - key: REACT_APP_AI_CONTENT_URL
-        fromService:
-          type: web
-          name: ai-content-service
-          property: host
-      - key: REACT_APP_AI_ASSESSMENT_URL
-        fromService:
-          type: web
-          name: ai-assessment-service
-          property: host
-      - key: REACT_APP_SEARCH_URL
-        fromService:
-          type: web
-          name: ai-search-service
-          property: host
-      - key: REACT_APP_AI_COMMUNICATION_URL
-        fromService:
-          type: web
-          name: ai-communication-service
-          property: host
-
-databases:
-  - name: intelligent-lms-postgres
-    plan: starter
-    region: oregon
-    databaseName: intelligent_lms
-    user: intelligent_lms_user
+    staticPublishPath: ./dist
